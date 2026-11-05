@@ -8,6 +8,22 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Each phase records its name so a failure reports what it was doing. A bare
+# "Access is denied." carries no context otherwise.
+$Step = "start"
+function Write-StepFailure($message) {
+    Write-Host ""
+    Write-Host "ERROR: $Step failed: $message" -ForegroundColor Red
+    if ($message -match 'denied|UnauthorizedAccess') {
+        Write-Host '  The installer never writes to the current directory, so a protected' -ForegroundColor Yellow
+        Write-Host '  working directory such as C:\Windows\System32 is not the cause.' -ForegroundColor Yellow
+        Write-Host '  Next steps:' -ForegroundColor Yellow
+        Write-Host '    cd $env:USERPROFILE    # then rerun the install command' -ForegroundColor Yellow
+        Write-Host '    $env:TEMP              # must point at a writable folder' -ForegroundColor Yellow
+        Write-Host '    $env:RAI_INSTALL_DIR   # set it to choose another target folder' -ForegroundColor Yellow
+    }
+}
+
 $REPO = "reasonaryai/rai-code"
 $INSTALL_DIR = if ($env:RAI_INSTALL_DIR) { $env:RAI_INSTALL_DIR } else { "$env:LOCALAPPDATA\rai\bin" }
 
@@ -75,11 +91,24 @@ $DOWNLOAD_URL = "$RAI_RELEASE_BASE_URL/$Version/rai-$Version-$TARGET.zip"
 $CHECKSUM_URL = "$RAI_RELEASE_BASE_URL/$Version/checksums.txt"
 $SIGN_URL = "$RAI_RELEASE_BASE_URL/$Version/checksums.txt.sig"
 
-$TMPDIR = Join-Path $env:TEMP "rai-install-$([System.Guid]::NewGuid())"
-New-Item -ItemType Directory -Force -Path $TMPDIR | Out-Null
+$TEMP_ROOT = [System.IO.Path]::GetTempPath()
+if (-not $TEMP_ROOT -or -not (Test-Path -LiteralPath $TEMP_ROOT)) {
+    $TEMP_ROOT = Join-Path $env:LOCALAPPDATA "Temp"
+}
+$TMPDIR = Join-Path $TEMP_ROOT "rai-install-$([System.Guid]::NewGuid())"
+$Step = "creating a temporary directory under $TEMP_ROOT"
+try {
+    New-Item -ItemType Directory -Force -Path $TMPDIR -ErrorAction Stop | Out-Null
+    Set-Content -LiteralPath (Join-Path $TMPDIR ".write-test") -Value "ok" -ErrorAction Stop
+    Remove-Item -LiteralPath (Join-Path $TMPDIR ".write-test") -Force
+} catch {
+    Write-StepFailure $_.Exception.Message
+    exit 1
+}
 
 try {
     # Download
+    $Step = "downloading $DOWNLOAD_URL"
     Write-Host "-> Downloading..."
     Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile "$TMPDIR\rai.zip"
     Invoke-WebRequest -Uri $CHECKSUM_URL -OutFile "$TMPDIR\checksums.txt"
@@ -96,6 +125,7 @@ try {
         Write-Host "       Owner: run 'task release:keygen' and paste rai-release.pub into install.ps1." -ForegroundColor Red
         exit 1
     }
+    $Step = "verifying the release signature"
     Write-Host "-> Verifying release signature..."
     $pubPath = "$TMPDIR\rai-release.pub"
     Set-Content -Path $pubPath -Value $RAI_RELEASE_PUBKEY
@@ -121,6 +151,7 @@ try {
     }
 
     # Verify checksum
+    $Step = "verifying the archive checksum"
     Write-Host "-> Verifying checksum..."
     $expected = (Select-String -Path "$TMPDIR\checksums.txt" -Pattern "rai-$Version-$TARGET.zip" | ForEach-Object { $_.Line.Split()[0] })
     $actual = (Get-FileHash -Path "$TMPDIR\rai.zip" -Algorithm SHA256).Hash.ToLower()
@@ -133,12 +164,15 @@ try {
     Write-Host "  Checksum OK"
 
     # Extract
+    $Step = "extracting the archive"
     Expand-Archive -Path "$TMPDIR\rai.zip" -DestinationPath "$TMPDIR\extracted"
 
     # Install
+    $Step = "installing rai.exe into $INSTALL_DIR"
     New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
     Copy-Item -Path "$TMPDIR\extracted\rai.exe" -Destination "$INSTALL_DIR\rai.exe" -Force
 
+    $Step = "preparing the ripgrep search runtime"
     Write-Host "-> Preparing ripgrep search runtime..."
     & "$INSTALL_DIR\rai.exe" ripgrep install
     if ($LASTEXITCODE -ne 0) {
@@ -146,6 +180,7 @@ try {
     }
 
     # Built-in browser tools require no separate npm/Node/Playwright setup.
+    $Step = "preparing the browser runtime"
     Write-Host "-> Preparing browser runtime..."
     & "$INSTALL_DIR\rai.exe" browser install
     if ($LASTEXITCODE -ne 0) {
@@ -153,6 +188,7 @@ try {
     }
 
     # Add to PATH for current session
+    $Step = "adding $INSTALL_DIR to the user PATH"
     $userPath = [Environment]::GetEnvironmentVariable("PATH", "User")
     if ($userPath -notlike "*$INSTALL_DIR*") {
         [Environment]::SetEnvironmentVariable("PATH", "$userPath;$INSTALL_DIR", "User")
@@ -164,6 +200,9 @@ try {
     Write-Host ""
     Write-Host "  Run 'rai' to get started!"
     Write-Host "  (Restart your terminal if 'rai' is not found in PATH)"
+} catch {
+    Write-StepFailure $_.Exception.Message
+    exit 1
 } finally {
     Remove-Item -Recurse -Force $TMPDIR -ErrorAction SilentlyContinue
 }
