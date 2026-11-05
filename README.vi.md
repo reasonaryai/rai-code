@@ -2,13 +2,14 @@
   <picture>
     <source media="(prefers-reduced-motion: reduce) and (prefers-color-scheme: dark)" srcset="assets/logo-rai-white.png">
     <source media="(prefers-reduced-motion: reduce)" srcset="assets/logo-rai-dark.png">
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-rai-animated-white.webp">
-    <img src="assets/logo-rai-animated-dark.webp" alt="RAI Code" width="640">
+    <source media="(prefers-color-scheme: dark)" type="image/webp" srcset="assets/logo-rai-animated-white.webp">
+    <source type="image/webp" srcset="assets/logo-rai-animated-dark.webp">
+    <img src="assets/logo-rai-animated.gif" alt="RAI Code" width="640">
   </picture>
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <strong>Tiếng Việt</strong>
+  <a href="README.md">English</a> · <strong>Tiếng Việt</strong> · <a href="https://code.reasonary.ai/docs">Tài liệu</a>
 </p>
 
 **Reasonary AI Code** — trợ lý lập trình AI chạy trong terminal, có công cụ đọc, sửa và thực thi code.
