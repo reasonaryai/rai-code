@@ -30,7 +30,7 @@ function Write-StepFailure($errorRecord) {
         Write-Host '  This is a permissions failure. The installer writes to:' -ForegroundColor Yellow
         Write-Host "    temp:    $TEMP_ROOT" -ForegroundColor Yellow
         Write-Host "    install: $INSTALL_DIR" -ForegroundColor Yellow
-        Write-Host '    cache:   $env:LOCALAPPDATA\rai (ripgrep) and $env:LOCALAPPDATA\rai-browser' -ForegroundColor Yellow
+        Write-Host "    cache:   $env:LOCALAPPDATA\rai (ripgrep) and $env:LOCALAPPDATA\rai-browser" -ForegroundColor Yellow
         Write-Host '  Point them elsewhere before retrying:' -ForegroundColor Yellow
         Write-Host '    $env:TMP  = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
         Write-Host '    $env:TEMP = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
