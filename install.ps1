@@ -11,16 +11,29 @@ $ErrorActionPreference = "Stop"
 # Each phase records its name so a failure reports what it was doing. A bare
 # "Access is denied." carries no context otherwise.
 $Step = "start"
-function Write-StepFailure($message) {
+$TEMP_ROOT = "(unresolved)"
+function Write-StepFailure($errorRecord) {
+    $message = if ($errorRecord -is [System.Management.Automation.ErrorRecord]) {
+        $errorRecord.Exception.Message
+    } else {
+        [string]$errorRecord
+    }
     Write-Host ""
     Write-Host "ERROR: $Step failed: $message" -ForegroundColor Red
-    if ($message -match 'denied|UnauthorizedAccess') {
-        Write-Host '  The installer never writes to the current directory, so a protected' -ForegroundColor Yellow
-        Write-Host '  working directory such as C:\Windows\System32 is not the cause.' -ForegroundColor Yellow
-        Write-Host '  Next steps:' -ForegroundColor Yellow
-        Write-Host '    cd $env:USERPROFILE    # then rerun the install command' -ForegroundColor Yellow
-        Write-Host '    $env:TEMP              # must point at a writable folder' -ForegroundColor Yellow
-        Write-Host '    $env:RAI_INSTALL_DIR   # set it to choose another target folder' -ForegroundColor Yellow
+    # Match the exception type and HRESULT, not the localized message text.
+    $denied = $false
+    if ($errorRecord -is [System.Management.Automation.ErrorRecord]) {
+        $ex = $errorRecord.Exception
+        $denied = ($ex -is [System.UnauthorizedAccessException]) -or ($ex.HResult -eq -2147024891)
+    }
+    if ($denied -or $message -match 'denied|UnauthorizedAccess') {
+        Write-Host '  This is a permissions failure. The installer writes only to:' -ForegroundColor Yellow
+        Write-Host "    temp:    $TEMP_ROOT" -ForegroundColor Yellow
+        Write-Host "    install: $INSTALL_DIR" -ForegroundColor Yellow
+        Write-Host '  Check those locations, or point them elsewhere before retrying:' -ForegroundColor Yellow
+        Write-Host '    $env:TMP  = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
+        Write-Host '    $env:TEMP = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
+        Write-Host '    $env:RAI_INSTALL_DIR = "$env:LOCALAPPDATA\rai\bin"' -ForegroundColor Yellow
     }
 }
 
@@ -77,13 +90,9 @@ $TARGET = "windows-amd64"
 
 # Resolve version
 if (-not $Version) {
+    $Step = "resolving the latest release"
     Write-Host "-> Resolving latest release..."
-    try {
-        $Version = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
-    } catch {
-        Write-Host "ERROR: Could not resolve latest version" -ForegroundColor Red
-        exit 1
-    }
+    $Version = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
 }
 Write-Host "-> Installing rai $Version ($TARGET)..."
 
@@ -91,19 +100,38 @@ $DOWNLOAD_URL = "$RAI_RELEASE_BASE_URL/$Version/rai-$Version-$TARGET.zip"
 $CHECKSUM_URL = "$RAI_RELEASE_BASE_URL/$Version/checksums.txt"
 $SIGN_URL = "$RAI_RELEASE_BASE_URL/$Version/checksums.txt.sig"
 
-$TEMP_ROOT = [System.IO.Path]::GetTempPath()
-if (-not $TEMP_ROOT -or -not (Test-Path -LiteralPath $TEMP_ROOT)) {
-    $TEMP_ROOT = Join-Path $env:LOCALAPPDATA "Temp"
+# Resolve a writable temp root: GetTempPath honours TMP before TEMP and does
+# not check writability, so prove the directory works and fall back once to
+# %LOCALAPPDATA%\Temp (the standard per-user writable location).
+function New-RaiTempDir($root) {
+    $dir = Join-Path $root "rai-install-$([System.Guid]::NewGuid())"
+    New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
+    Set-Content -LiteralPath (Join-Path $dir ".write-test") -Value "ok" -ErrorAction Stop
+    Remove-Item -LiteralPath (Join-Path $dir ".write-test") -Force -ErrorAction SilentlyContinue
+    return $dir
 }
-$TMPDIR = Join-Path $TEMP_ROOT "rai-install-$([System.Guid]::NewGuid())"
-$Step = "creating a temporary directory under $TEMP_ROOT"
+
+$Step = "resolving a writable temporary directory"
+$TEMP_ROOT = [System.IO.Path]::GetTempPath()
+$TEMP_FALLBACK = Join-Path $env:LOCALAPPDATA "Temp"
+$TMPDIR = $null
 try {
-    New-Item -ItemType Directory -Force -Path $TMPDIR -ErrorAction Stop | Out-Null
-    Set-Content -LiteralPath (Join-Path $TMPDIR ".write-test") -Value "ok" -ErrorAction Stop
-    Remove-Item -LiteralPath (Join-Path $TMPDIR ".write-test") -Force
+    $TMPDIR = New-RaiTempDir $TEMP_ROOT
 } catch {
-    Write-StepFailure $_.Exception.Message
-    exit 1
+    $first = $_.Exception.Message
+    if ($TEMP_ROOT -ne $TEMP_FALLBACK) {
+        Write-Host "-> $TEMP_ROOT is not writable ($first); trying $TEMP_FALLBACK"
+        $TEMP_ROOT = $TEMP_FALLBACK
+        try {
+            $TMPDIR = New-RaiTempDir $TEMP_FALLBACK
+        } catch {
+            Write-StepFailure $_
+            throw
+        }
+    } else {
+        Write-StepFailure $_
+        throw
+    }
 }
 
 try {
@@ -201,8 +229,11 @@ try {
     Write-Host "  Run 'rai' to get started!"
     Write-Host "  (Restart your terminal if 'rai' is not found in PATH)"
 } catch {
-    Write-StepFailure $_.Exception.Message
-    exit 1
+    Write-StepFailure $_
+    # throw, not exit: `irm | iex` runs in the caller's session, and exit would
+    # close it before the diagnosis is read. A thrown error also yields a
+    # non-zero exit for `powershell -c`.
+    throw
 } finally {
-    Remove-Item -Recurse -Force $TMPDIR -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force -LiteralPath $TMPDIR -ErrorAction SilentlyContinue
 }
