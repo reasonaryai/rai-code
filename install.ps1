@@ -27,13 +27,16 @@ function Write-StepFailure($errorRecord) {
         $denied = ($ex -is [System.UnauthorizedAccessException]) -or ($ex.HResult -eq -2147024891)
     }
     if ($denied -or $message -match 'denied|UnauthorizedAccess') {
-        Write-Host '  This is a permissions failure. The installer writes only to:' -ForegroundColor Yellow
+        Write-Host '  This is a permissions failure. The installer writes to:' -ForegroundColor Yellow
         Write-Host "    temp:    $TEMP_ROOT" -ForegroundColor Yellow
         Write-Host "    install: $INSTALL_DIR" -ForegroundColor Yellow
-        Write-Host '  Check those locations, or point them elsewhere before retrying:' -ForegroundColor Yellow
+        Write-Host '    cache:   $env:LOCALAPPDATA\rai (ripgrep) and $env:LOCALAPPDATA\rai-browser' -ForegroundColor Yellow
+        Write-Host '  Point them elsewhere before retrying:' -ForegroundColor Yellow
         Write-Host '    $env:TMP  = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
         Write-Host '    $env:TEMP = "$env:USERPROFILE\tmp"' -ForegroundColor Yellow
-        Write-Host '    $env:RAI_INSTALL_DIR = "$env:LOCALAPPDATA\rai\bin"' -ForegroundColor Yellow
+        Write-Host '    $env:RAI_INSTALL_DIR = "$env:USERPROFILE\rai\bin"' -ForegroundColor Yellow
+        Write-Host '    $env:RAI_CACHE_DIR   = "$env:USERPROFILE\rai-cache"' -ForegroundColor Yellow
+        Write-Host '    $env:RAI_BROWSER_RUNTIME_DIR = "$env:USERPROFILE\rai-browser"' -ForegroundColor Yellow
     }
 }
 
@@ -92,7 +95,12 @@ $TARGET = "windows-amd64"
 if (-not $Version) {
     $Step = "resolving the latest release"
     Write-Host "-> Resolving latest release..."
-    $Version = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
+    try {
+        $Version = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
+    } catch {
+        Write-StepFailure $_
+        throw
+    }
 }
 Write-Host "-> Installing rai $Version ($TARGET)..."
 
@@ -105,21 +113,30 @@ $SIGN_URL = "$RAI_RELEASE_BASE_URL/$Version/checksums.txt.sig"
 # %LOCALAPPDATA%\Temp (the standard per-user writable location).
 function New-RaiTempDir($root) {
     $dir = Join-Path $root "rai-install-$([System.Guid]::NewGuid())"
-    New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
-    Set-Content -LiteralPath (Join-Path $dir ".write-test") -Value "ok" -ErrorAction Stop
-    Remove-Item -LiteralPath (Join-Path $dir ".write-test") -Force -ErrorAction SilentlyContinue
+    try {
+        New-Item -ItemType Directory -Force -Path $dir -ErrorAction Stop | Out-Null
+        Set-Content -LiteralPath (Join-Path $dir ".write-test") -Value "ok" -ErrorAction Stop
+        Remove-Item -LiteralPath (Join-Path $dir ".write-test") -Force -ErrorAction SilentlyContinue
+    } catch {
+        # Never leave a half-created probe directory behind.
+        Remove-Item -Recurse -Force -LiteralPath $dir -ErrorAction SilentlyContinue
+        throw
+    }
     return $dir
 }
 
 $Step = "resolving a writable temporary directory"
 $TEMP_ROOT = [System.IO.Path]::GetTempPath()
-$TEMP_FALLBACK = Join-Path $env:LOCALAPPDATA "Temp"
+$TEMP_FALLBACK = if ($env:LOCALAPPDATA) { Join-Path $env:LOCALAPPDATA "Temp" } else { $null }
 $TMPDIR = $null
 try {
     $TMPDIR = New-RaiTempDir $TEMP_ROOT
 } catch {
     $first = $_.Exception.Message
-    if ($TEMP_ROOT -ne $TEMP_FALLBACK) {
+    # GetTempPath() always ends with a separator; compare normalized roots so the
+    # retry never repeats the same directory.
+    $sameRoot = $TEMP_FALLBACK -and (($TEMP_ROOT.TrimEnd('\')) -eq ($TEMP_FALLBACK.TrimEnd('\')))
+    if ($TEMP_FALLBACK -and -not $sameRoot) {
         Write-Host "-> $TEMP_ROOT is not writable ($first); trying $TEMP_FALLBACK"
         $TEMP_ROOT = $TEMP_FALLBACK
         try {
@@ -144,14 +161,14 @@ try {
         Invoke-WebRequest -Uri $SIGN_URL -OutFile "$TMPDIR\checksums.txt.sig"
     } catch {
         Write-Host "ERROR: missing checksums.txt.sig for $Version - refusing to install an unsigned release" -ForegroundColor Red
-        exit 1
+        throw "unsigned release refused"
     }
 
     # Verify the release signature before trusting checksums.txt
     if ($RAI_RELEASE_PUBKEY -eq 'PASTE_PUBLIC_KEY_HERE') {
         Write-Host "ERROR: this installer has no release public key embedded (RAI_RELEASE_PUBKEY)." -ForegroundColor Red
         Write-Host "       Owner: run 'task release:keygen' and paste rai-release.pub into install.ps1." -ForegroundColor Red
-        exit 1
+        throw "installer has no release public key"
     }
     $Step = "verifying the release signature"
     Write-Host "-> Verifying release signature..."
@@ -171,11 +188,11 @@ try {
             [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
     } else {
         Write-Host "ERROR: PowerShell 7+ or openssl on PATH is required to verify the release signature." -ForegroundColor Red
-        exit 1
+        throw "no signature verification tool available"
     }
     if (-not $verified) {
         Write-Host "ERROR: release signature verification FAILED - refusing to install." -ForegroundColor Red
-        exit 1
+        throw "release signature verification failed"
     }
 
     # Verify checksum
@@ -187,7 +204,7 @@ try {
         Write-Host "ERROR: Checksum mismatch!" -ForegroundColor Red
         Write-Host "  Expected: $expected" -ForegroundColor Red
         Write-Host "  Actual:   $actual" -ForegroundColor Red
-        exit 1
+        throw "checksum mismatch"
     }
     Write-Host "  Checksum OK"
 
