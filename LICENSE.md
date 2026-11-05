@@ -1,0 +1,1 @@
+© Reasonary AI Corp. All rights reserved. Use is subject to [Reasonary AI's Commercial Terms of Service](https://code.reasonary.ai/code-terms).
