@@ -8,6 +8,79 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Windows PowerShell 5.1 parses pages with the IE engine and prompts unless
+# -UseBasicParsing is given (PowerShell 7 no longer needs it). One helper keeps
+# every download on the same path.
+function Invoke-RaiWebRequest($uri, $outFile) {
+    $params = @{ Uri = $uri; ErrorAction = 'Stop' }
+    if ($outFile) { $params.OutFile = $outFile }
+    if ($PSVersionTable.PSEdition -eq 'Desktop') { $params.UseBasicParsing = $true }
+    Invoke-WebRequest @params
+}
+
+# Windows PowerShell 5.1 has no RSA.ImportFromPem, so decode the
+# SubjectPublicKeyInfo PEM into RSAParameters here. The signature primitive is
+# still .NET's RSA (PKCS#1 v1.5 over SHA-256); only the container is walked.
+# Returns $null when the PEM is not a usable SPKI structure.
+function ConvertFrom-SpkiPem([string]$pem) {
+    $base64 = ($pem -replace '-----BEGIN PUBLIC KEY-----', '' -replace '-----END PUBLIC KEY-----', '' -replace '\s', '')
+    try { $der = [Convert]::FromBase64String($base64) } catch { return $null }
+
+    function Read-Tlv([byte[]]$buf, [ref]$off) {
+        if ($off.Value + 2 -gt $buf.Length) { throw 'truncated DER' }
+        $tag = [int]$buf[$off.Value]; $off.Value++
+        $len = [int]$buf[$off.Value]; $off.Value++
+        if (($len -band 0x80) -ne 0) {
+            $count = $len -band 0x7F
+            if ($count -lt 1 -or $count -gt 4) { throw 'unsupported DER length' }
+            $len = 0
+            for ($i = 0; $i -lt $count; $i++) {
+                $len = ($len * 256) + [int]$buf[$off.Value]; $off.Value++
+            }
+        }
+        if ($off.Value + $len -gt $buf.Length) { throw 'truncated DER value' }
+        $start = $off.Value
+        $off.Value += $len
+        [pscustomobject]@{ Tag = $tag; Start = $start; Length = $len }
+    }
+
+    try {
+        $pos = 0
+        $spki = Read-Tlv $der ([ref]$pos)                 # SEQUENCE SubjectPublicKeyInfo
+        if ($spki.Tag -ne 0x30) { return $null }
+        # Descending into a constructed value means continuing at its contents.
+        $seq = $spki.Start
+        $alg = Read-Tlv $der ([ref]$seq)                  # SEQUENCE AlgorithmIdentifier
+        if ($alg.Tag -ne 0x30) { return $null }
+        $bits = Read-Tlv $der ([ref]$seq)                 # BIT STRING
+        if ($bits.Tag -ne 0x03) { return $null }
+        $inner = $bits.Start + 1                          # skip the unused-bits octet
+        $rsaKey = Read-Tlv $der ([ref]$inner)             # SEQUENCE RSAPublicKey
+        if ($rsaKey.Tag -ne 0x30) { return $null }
+        $keyPos = $rsaKey.Start
+        $modulus = Read-Tlv $der ([ref]$keyPos)           # INTEGER n
+        $exponent = Read-Tlv $der ([ref]$keyPos)          # INTEGER e
+        if ($modulus.Tag -ne 0x02 -or $exponent.Tag -ne 0x02) { return $null }
+
+        $mod = [byte[]]::new($modulus.Length)
+        [Array]::Copy($der, $modulus.Start, $mod, 0, $modulus.Length)
+        if ($mod.Length -gt 1 -and $mod[0] -eq 0) {
+            $trimmed = [byte[]]::new($mod.Length - 1)
+            [Array]::Copy($mod, 1, $trimmed, 0, $trimmed.Length)
+            $mod = $trimmed
+        }
+        $exp = [byte[]]::new($exponent.Length)
+        [Array]::Copy($der, $exponent.Start, $exp, 0, $exponent.Length)
+
+        $parameters = New-Object System.Security.Cryptography.RSAParameters
+        $parameters.Modulus = $mod
+        $parameters.Exponent = $exp
+        return $parameters
+    } catch {
+        return $null
+    }
+}
+
 # Each phase records its name so a failure reports what it was doing. A bare
 # "Access is denied." carries no context otherwise.
 $Step = "start"
@@ -96,7 +169,7 @@ if (-not $Version) {
     $Step = "resolving the latest release"
     Write-Host "-> Resolving latest release..."
     try {
-        $Version = (Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
+        $Version = (Invoke-RaiWebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
     } catch {
         Write-StepFailure $_
         throw
@@ -155,10 +228,10 @@ try {
     # Download
     $Step = "downloading $DOWNLOAD_URL"
     Write-Host "-> Downloading..."
-    Invoke-WebRequest -Uri $DOWNLOAD_URL -OutFile "$TMPDIR\rai.zip"
-    Invoke-WebRequest -Uri $CHECKSUM_URL -OutFile "$TMPDIR\checksums.txt"
+    Invoke-RaiWebRequest $DOWNLOAD_URL "$TMPDIR\rai.zip"
+    Invoke-RaiWebRequest $CHECKSUM_URL "$TMPDIR\checksums.txt"
     try {
-        Invoke-WebRequest -Uri $SIGN_URL -OutFile "$TMPDIR\checksums.txt.sig"
+        Invoke-RaiWebRequest $SIGN_URL "$TMPDIR\checksums.txt.sig"
     } catch {
         Write-Host "ERROR: missing checksums.txt.sig for $Version - refusing to install an unsigned release" -ForegroundColor Red
         throw "unsigned release refused"
@@ -175,20 +248,34 @@ try {
     $pubPath = "$TMPDIR\rai-release.pub"
     Set-Content -Path $pubPath -Value $RAI_RELEASE_PUBKEY
     $verified = $false
+    $data = [System.IO.File]::ReadAllBytes("$TMPDIR\checksums.txt")
+    $sig = [System.IO.File]::ReadAllBytes("$TMPDIR\checksums.txt.sig")
     if (Get-Command openssl -ErrorAction SilentlyContinue) {
         & openssl dgst -sha256 -verify $pubPath -signature "$TMPDIR\checksums.txt.sig" "$TMPDIR\checksums.txt" | Out-Null
         $verified = ($LASTEXITCODE -eq 0)
     } elseif ($PSVersionTable.PSEdition -eq 'Core') {
         $rsa = [System.Security.Cryptography.RSA]::Create()
         $rsa.ImportFromPem($RAI_RELEASE_PUBKEY)
-        $data = [System.IO.File]::ReadAllBytes("$TMPDIR\checksums.txt")
-        $sig = [System.IO.File]::ReadAllBytes("$TMPDIR\checksums.txt.sig")
         $verified = $rsa.VerifyData($data, $sig,
             [System.Security.Cryptography.HashAlgorithmName]::SHA256,
             [System.Security.Cryptography.RSASignaturePadding]::Pkcs1)
     } else {
-        Write-Host "ERROR: PowerShell 7+ or openssl on PATH is required to verify the release signature." -ForegroundColor Red
-        throw "no signature verification tool available"
+        # Windows PowerShell 5.1 without openssl: verify in-process with .NET.
+        $parameters = ConvertFrom-SpkiPem $RAI_RELEASE_PUBKEY
+        if (-not $parameters) {
+            Write-Host "ERROR: could not parse the embedded release public key." -ForegroundColor Red
+            throw "unparseable release public key"
+        }
+        $rsa = $null
+        try {
+            $rsa = New-Object System.Security.Cryptography.RSACryptoServiceProvider
+            $rsa.ImportParameters($parameters)
+            $verified = $rsa.VerifyData($data, 'SHA256', $sig)
+        } catch {
+            $verified = $false
+        } finally {
+            if ($rsa) { $rsa.Dispose() }
+        }
     }
     if (-not $verified) {
         Write-Host "ERROR: release signature verification FAILED - refusing to install." -ForegroundColor Red
