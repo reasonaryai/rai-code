@@ -10,6 +10,56 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.8.1 — 2026-11-06
+
+### Fixed
+
+- **Pasting works with native shortcuts.** The editor and the API-key dialog
+  accept `ctrl+v`, `ctrl+shift+v`, `cmd+v`/`super+v`, `shift+insert` and `alt+v`,
+  and the hint follows the platform (`cmd+v / ctrl+v` on macOS, `ctrl+v / alt+v`
+  elsewhere). Select-all, undo and redo also accept the macOS Cmd variants.
+- **Clipboard reads in the API-key dialog cannot clobber newer input.** Reads
+  are tagged with a request id and a "clipboard unavailable" result is separated
+  from a slow terminal, so a late reply never replaces what you typed or
+  interrupts verification.
+- **The Windows installer verifies the release signature on Windows
+  PowerShell 5.1.** 5.1 has no `RSA.ImportFromPem` and often no `openssl`, so
+  the installer previously refused to continue. It now decodes the embedded
+  public key itself and verifies in-process with .NET (PKCS#1 v1.5 over
+  SHA-256); `openssl` and PowerShell 7 keep their paths. The trust chain is
+  unchanged: signature, then checksums, then extract.
+- **Windows install failures are actionable.** Every phase reports its name
+  (`ERROR: <step> failed: <message>`), the temp root falls back to
+  `%LOCALAPPDATA%\Temp` when `TMP`/`TEMP` is not writable, a failed probe leaves
+  no directory behind, and the guidance names the temp, install and cache
+  locations with `TMP`, `TEMP`, `RAI_INSTALL_DIR`, `RAI_CACHE_DIR` and
+  `RAI_BROWSER_RUNTIME_DIR`.
+- **Installer failures no longer close the shell.** The refusal paths raise
+  errors instead of exiting, so `irm … | iex` keeps the session (and the
+  message) while `powershell -c` still returns a non-zero code.
+- **Windows PowerShell 5.1 no longer prompts a security warning.** Downloads
+  pass `-UseBasicParsing` on the Desktop edition, avoiding the IE-engine
+  parse prompt.
+- **`install.cmd` no longer changes your working directory.** The installer
+  directory switch happens inside the PowerShell process, and the bootstrap
+  keeps the installer's exit code.
+
+### Added
+
+- **Expand-all hint.** `ctrl+shift+o` / `alt+shift+o` is documented in the
+  adaptive key hints.
+
+### Changed
+
+- **READMEs link the documentation site.** The language switcher of all three
+  READMEs now points at `code.reasonary.ai/docs`.
+- **The README wordmark animates everywhere.** The picture element falls back
+  to a looping GIF because GitHub's image proxy does not animate every WebP,
+  while the animated WebP sources and the static PNGs for
+  `prefers-reduced-motion` are kept. Every mirror list (task, workflow, sync
+  guard) now knows the new asset, and the guard fixture includes
+  `CHANGELOG.md`.
+
 ## v0.8.0 — 2026-11-05
 
 ### Added
