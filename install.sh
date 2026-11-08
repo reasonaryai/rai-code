@@ -28,12 +28,15 @@ MTFWbBYntasa/cNVH9O4WY5FO2cvs+kWR2JEbiTUBnckDzIz0AOhgXR+VhQS0NzF
 heVGOkn1eh9oHph1j3l0zSECAwEAAQ==
 -----END PUBLIC KEY-----'
 
+RUNTIMES="ask"
 VERSION=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --version) VERSION="$2"; shift 2 ;;
+        --with-runtimes) RUNTIMES="yes"; shift ;;
+        --without-runtimes) RUNTIMES="no"; shift ;;
         --help|-h)
-            echo "Usage: install.sh [--version vX.Y.Z]"
+            echo "Usage: install.sh [--version vX.Y.Z] [--with-runtimes|--without-runtimes]"
             echo "  Installs rai to $INSTALL_DIR"
             exit 0 ;;
         *) echo "Unknown option: $1" >&2; exit 1 ;;
@@ -144,16 +147,20 @@ mkdir -p "$INSTALL_DIR"
 cp rai "$INSTALL_DIR/rai"
 chmod +x "$INSTALL_DIR/rai"
 
-# Search uses RAI's pinned runtime, independent of a system rg installation.
-echo "-> Preparing ripgrep search runtime..."
-"$INSTALL_DIR/rai" ripgrep install
-
-# Built-in browser tools are prepared by this installer, not by the user.
-echo "-> Preparing browser runtime..."
-"$INSTALL_DIR/rai" browser install
+# The installed binary owns prompts, versions and persistent choices.
+case "$RUNTIMES" in
+    yes) "$INSTALL_DIR/rai" dependencies setup --yes ;;
+    no) "$INSTALL_DIR/rai" dependencies setup --later ;;
+    *) "$INSTALL_DIR/rai" dependencies setup ;;
+esac
 
 echo ""
 echo "  -> Installed: $INSTALL_DIR/rai"
-echo "  -> Make sure $INSTALL_DIR is in your PATH."
-echo ""
-echo "  Run 'rai' to get started!"
+case ":${PATH:-}:" in
+    *":$INSTALL_DIR:"*) echo "  Run 'rai' to get started!" ;;
+    *)
+        echo "  -> $INSTALL_DIR is not in this terminal's PATH."
+        printf '  Run now: %q\n' "$INSTALL_DIR/rai"
+        printf '  To enable the rai command, add this to your shell profile:\n    export PATH=%q:"$PATH"\n' "$INSTALL_DIR"
+        ;;
+esac

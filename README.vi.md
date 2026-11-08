@@ -52,9 +52,14 @@ irm https://raw.githubusercontent.com/reasonaryai/rai-code/main/install.ps1 | ie
 powershell -c "irm https://raw.githubusercontent.com/reasonaryai/rai-code/main/install.ps1 | iex"
 ```
 
-Script cài đặt tự chuẩn bị ripgrep riêng của RAI trên Windows, macOS và Linux,
-kiểm tra SHA256 trước khi cài. Không cần tự cài ripgrep hay sửa PATH. Dùng
-`rai ripgrep install` để cài lại và `rai ripgrep path` để xem binary đang dùng.
+Script hỏi riêng có cài ripgrep cho tìm kiếm và browser runtime (Chromium,
+FFmpeg), kèm danh sách thành phần và phiên bản được ghim. Có ba lựa chọn:
+**Yes / No / Install later** (mặc định). No không hỏi lại tự động; Install later
+hiện panel xin phép khi tool cần dependency còn thiếu. Chạy không tương tác sẽ
+không tự tải runtime chưa được chấp thuận. Có thể cài sau bằng `rai ripgrep install` và `rai browser install`.
+Để chạy tự động, dùng `--with-runtimes` / `--without-runtimes` với `install.sh`,
+hoặc `-WithRuntimes` / `-WithoutRuntimes` với `install.ps1`.
+Dùng `rai ripgrep path` để xem binary tìm kiếm đang dùng.
 
 ### Tải thủ công
 

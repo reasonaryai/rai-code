@@ -10,6 +10,82 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.0 — 2026-11-08
+
+### Added
+
+- **Settings is a tabbed panel.** Status, Config, Usage and Stats live in one
+  panel, with pointer and keyboard navigation between tabs.
+- **Mouse support across the TUI.** Dialogs, question panels, popups and the
+  permission picker accept clicks and hover, and the responsive key hints follow
+  the active panel.
+- **Full Access from the approval dialog.** A permission request offers Allow,
+  Allow for Session, Full Access and Deny; Full Access grants the request and
+  switches the session to full access.
+- **Verified background updates.** A release downloads and verifies its signed
+  checksums in the background, shows a restart notice and has a settings
+  toggle. Snoozed and skipped releases are honored, and a failed download or
+  verification keeps the installed binary.
+- **Dependency installs ask first.** Managed runtimes share Yes, No and Install
+  later decisions, with versioned manifests and install progress in local and
+  remote chat; installer runtime setup is optional.
+- **Idle recaps.** Short ephemeral summaries appear before the companion sleeps.
+- **60 fps recordings.** Browser and terminal workflows record with paced input
+  and a fixed frame rate, including a native terminal WebM export and
+  compatible bundled VP8/VP9 codecs.
+
+### Improved
+
+- **Focused tool schemas.** Browser and terminal interaction tools carry
+  smaller, purpose-built schemas, core tools configure their runtime policies,
+  focused discovery works with legacy validation, and the agent documentation
+  explains deferred operations.
+- **Composer and transcript polish.** The composer is framed and compact, mode
+  badges stay visible while scrolling, working gradients are readable, queued
+  prompts are highlighted, selection chevrons are unified, timestamps use
+  readable colons, and cursor blinking follows its own timer instead of the
+  terminal setting.
+- **Sessions.** Busy state is isolated per session, the landing view shows
+  background activity, title generation finishes independently with a model
+  fallback, internal prompt envelopes are stripped from titles, and the latest
+  explicit model choice carries into new sessions.
+- **Recaps** summarize only the latest turn as language-aware prose and stay
+  visible while you read or compose a draft.
+- **Sign-in** completes API-key verification in one submission, replaces a
+  pasted key and waits for the clipboard, and retries transient provider
+  connection timeouts.
+- **Fewer permission prompts.** Trusted reads and local edits, and trusted
+  read-only fetches in accept-edit, no longer prompt; MCP read-only approval
+  follows the current server contract, and code-mode aliases are refused.
+- **The model picker prioritizes Super Agent** and explains switching to a
+  bound session.
+- **Notifications** alert only for important events while the session is
+  unfocused.
+- Elapsed time pauses while the agent waits for your input, macOS model
+  shortcuts are labelled with Option, and Windows keeps background process
+  helpers hidden.
+- `rai build-info` carries the diagnostic metadata that used to sit in the CLI.
+
+### Changed
+
+- **The theme picker offers named themes.** Custom palette editing is gone;
+  `theme_mode` remains as a legacy fallback when no theme is selected.
+- **Approval stays explicit.** The experimental Auto review mode was withdrawn
+  before release, so a permission request always offers an explicit choice.
+- Repository-wide gofumpt and goimports formatting, and unused module checksums
+  pruned for the release toolchain.
+
+### Fixed
+
+- **`rai -u` installs across filesystems.** The updater unpacked the download in
+  the system temp directory and renamed it onto the install path, which Linux
+  rejects with `invalid cross-device link`; it now stages the binary beside the
+  target and swaps it atomically, and refuses to overwrite the running binary
+  when staging fails.
+- Composer pointer focus, panel spacing and the mascot sleep state.
+- Release signing checks validate derived updater target names.
+- Repository lint errors and stale UI replay markers.
+
 ## v0.8.1 — 2026-11-06
 
 ### Fixed

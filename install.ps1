@@ -3,10 +3,13 @@
 
 param(
     [string]$Version = "",
+    [switch]$WithRuntimes,
+    [switch]$WithoutRuntimes,
     [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
+if ($WithRuntimes -and $WithoutRuntimes) { throw "Choose WithRuntimes or WithoutRuntimes, not both." }
 
 # Windows PowerShell 5.1 parses pages with the IE engine and prompts unless
 # -UseBasicParsing is given (PowerShell 7 no longer needs it). One helper keeps
@@ -143,7 +146,7 @@ $RAI_RELEASE_BASE_URL = if ($env:RAI_RELEASE_BASE_URL) {
 }
 
 if ($Help) {
-    Write-Host "Usage: .\install.ps1 [-Version vX.Y.Z]"
+    Write-Host "Usage: .\install.ps1 [-Version vX.Y.Z] [-WithRuntimes|-WithoutRuntimes]"
     exit 0
 }
 
@@ -304,20 +307,11 @@ try {
     New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
     Copy-Item -Path "$TMPDIR\extracted\rai.exe" -Destination "$INSTALL_DIR\rai.exe" -Force
 
-    $Step = "preparing the ripgrep search runtime"
-    Write-Host "-> Preparing ripgrep search runtime..."
-    & "$INSTALL_DIR\rai.exe" ripgrep install
-    if ($LASTEXITCODE -ne 0) {
-        throw "Ripgrep runtime installation failed. Retry the installer or run rai ripgrep install."
-    }
-
-    # Built-in browser tools require no separate npm/Node/Playwright setup.
-    $Step = "preparing the browser runtime"
-    Write-Host "-> Preparing browser runtime..."
-    & "$INSTALL_DIR\rai.exe" browser install
-    if ($LASTEXITCODE -ne 0) {
-        throw "Browser runtime installation failed. Retry the installer or run rai browser install."
-    }
+    $Step = "reviewing optional dependencies"
+    if ($WithRuntimes) { & "$INSTALL_DIR\rai.exe" dependencies setup --yes }
+    elseif ($WithoutRuntimes) { & "$INSTALL_DIR\rai.exe" dependencies setup --later }
+    else { & "$INSTALL_DIR\rai.exe" dependencies setup }
+    if ($LASTEXITCODE -ne 0) { throw "Dependency setup did not complete. Run rai dependencies setup to retry." }
 
     # Add to PATH for current session
     $Step = "adding $INSTALL_DIR to the user PATH"

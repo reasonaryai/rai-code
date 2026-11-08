@@ -56,10 +56,14 @@ irm https://raw.githubusercontent.com/reasonaryai/rai-code/main/install.ps1 | ie
 powershell -c "irm https://raw.githubusercontent.com/reasonaryai/rai-code/main/install.ps1 | iex"
 ```
 
-The installers also prepare RAI's private, checksum-verified ripgrep runtime on
-Windows, macOS and Linux. No separate ripgrep installation or PATH change is
-needed. Use `rai ripgrep install` to repair it and `rai ripgrep path` to inspect
-the executable used by search.
+The installers ask separately whether to install ripgrep for search and the
+browser testing bundle, listing every managed component and its pinned version.
+Choose Yes, No, or Install later (the default). No suppresses automatic prompts;
+Install later asks in the TUI when a tool needs the missing dependency.
+Unattended runs never download missing runtimes without explicit approval. Install them later with `rai ripgrep install` and
+`rai browser install`. For scripted setup, use `--with-runtimes` or
+`--without-runtimes` with `install.sh`, or `-WithRuntimes` / `-WithoutRuntimes`
+with `install.ps1`. Use `rai ripgrep path` to inspect the search executable.
 
 ### Manual download
 
