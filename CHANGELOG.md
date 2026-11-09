@@ -10,6 +10,41 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.1 — 2026-11-09
+
+### Added
+
+- **Replacement models when a provider stops.** A turn whose provider cannot
+  continue asks before switching, then offers the configured models from other
+  providers; the selection is saved as Settings / Config → Replace model and the
+  same turn continues from the saved conversation and tool results, without
+  repeating completed side effects.
+
+### Improved
+
+- **Transient provider failures are retried inside the step.** Rate limits,
+  overloads, 5xx and timeouts back off and retry up to five times for Auker
+  models on both transports, while permanent errors still surface immediately.
+  Step retries and the turn's queued recovery no longer handle the same failure
+  twice, and a failed provider still has to satisfy the completion checks.
+- **CheaperInference is offered at setup**, with its authenticated catalog
+  refreshed as soon as a key is saved.
+- **Tool reasons and handoffs follow the user's language**, matching the rest of
+  the response.
+
+### Changed
+
+- **The verification gate defaults to `strict`.** A turn now needs current
+  independent review and runtime verification, or explicit skip reasons, before
+  it completes. Set `verify_gate` to `soft` for the previous single nudge, or
+  `off` to disable the check.
+
+### Fixed
+
+- A Yes/No shortcut question submits the highlighted answer instead of waiting
+  for a second confirmation.
+- Model picker groups no longer print provider API-key URLs.
+
 ## v0.9.0 — 2026-11-08
 
 ### Added
