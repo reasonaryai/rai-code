@@ -17,16 +17,15 @@ original mirror release did not include detailed change notes. -->
 - **Replacement models when a provider stops.** A turn whose provider cannot
   continue asks before switching, then offers the configured models from other
   providers; the selection is saved as Settings / Config → Replace model and the
-  same turn continues from the saved conversation and tool results, without
-  repeating completed side effects.
+  same turn continues from its existing history and completed tool results.
 
 ### Improved
 
 - **Transient provider failures are retried inside the step.** Rate limits,
   overloads, 5xx and timeouts back off and retry up to five times for Auker
   models on both transports, while permanent errors still surface immediately.
-  Step retries and the turn's queued recovery no longer handle the same failure
-  twice, and a failed provider still has to satisfy the completion checks.
+  Step retries and queued recovery no longer stack, and a failed provider still
+  goes through the verification gate.
 - **CheaperInference is offered at setup**, with its authenticated catalog
   refreshed as soon as a key is saved.
 - **Tool reasons and handoffs follow the user's language**, matching the rest of
@@ -34,15 +33,15 @@ original mirror release did not include detailed change notes. -->
 
 ### Changed
 
-- **The verification gate defaults to `strict`.** A turn now needs current
-  independent review and runtime verification, or explicit skip reasons, before
-  it completes. Set `verify_gate` to `soft` for the previous single nudge, or
-  `off` to disable the check.
+- **The verification gate defaults to `strict`.** A turn that changes files now
+  needs current independent review and runtime verification, or explicit skip
+  reasons, before it completes. Set `verify_gate` to `soft` for the previous
+  single nudge, or `off` to disable the check.
 
 ### Fixed
 
-- A Yes/No shortcut question submits the highlighted answer instead of waiting
-  for a second confirmation.
+- Pressing y or n in a Yes/No shortcut question submits that answer
+  immediately instead of waiting for a second confirmation.
 - Model picker groups no longer print provider API-key URLs.
 
 ## v0.9.0 — 2026-11-08
