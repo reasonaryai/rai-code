@@ -10,6 +10,79 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.2 — 2026-11-12
+
+### Added
+
+- **Worktrees are first-class.** `rai worktree add` creates a checkout seeded
+  with its own `.rai` configuration, while list, remove, merge and prune report,
+  remove, merge a branch back after showing its diffstat, and drop records whose
+  directory is gone; all but prune take `--json`. `/worktree` adds each
+  worktree's session activity, starts a headless agent inside one, and reopens
+  rai in the selected worktree with the flags it was launched with.
+- **Native workers run isolated.** Auker workers can be given their own
+  worktree, ownership is recorded in Git's administrative directory, and the
+  session remembers its execution root so a later resume continues in the same
+  checkout.
+- **The agents panel shows running sub-agents.** A roster between the prompt and
+  the help bar lists every in-flight agent with its live activity; enter opens
+  its transcript, `x` stops one, `ctrl+k` stops all, and `ctrl+x` focuses the
+  panel. It yields space to the prompt on short terminals.
+- **The user query stays pinned.** The question behind the visible response
+  remains above the transcript while you scroll.
+- **Usage reports durable totals.** The Usage tab shows the session's token and
+  cache totals from the ledger, not just the current context window.
+- **MCP results that are clipped stay readable** instead of being reported as
+  gone.
+- **Install-all consent is remembered per workspace**, and the install-all
+  choice sits first when a workspace has several runtimes to install.
+
+### Improved
+
+- **One engineering contract in every prompt.** Modes and skills share the
+  research-backed behavior rules, and every mode shows visible work-recap
+  checkpoints.
+- **Completion gates are scoped.** The gate counts resumed review and
+  verification evidence, reuses resumed receipts, and exempts bounded
+  presentation-only edits.
+- **Auker routing is explicit.** `prefer_models` and `exclude_models` are
+  validated and shared by both transports, routing requires a verified API key,
+  and the Responses reasoning effort is fixed at medium instead of exposing a
+  control.
+- **Worker identity and intent survive recovery.** A resumed worker keeps its
+  pinned identity and delegated intent, a task that outgrew a worker's budget is
+  reported to the coordinator, and feedback after recovery needs fresh
+  acceptance.
+- **Context handling is cheaper.** Connected-server instructions moved out of the
+  system prefix, a rewound turn recovers instead of staying compacted off, and
+  compaction budgets retained history beside turn overhead.
+- **Release downloads retry** transient and interrupted transfers instead of
+  failing the update.
+- Interface polish: shared selection styles, sidebar mode colors, an aligned
+  routing legend, model display names in sub-agent summaries, a composer left
+  edge that stays put across sessions, copyable diagnostics, responsive session
+  navigation, and collapsed tool discovery.
+- `rai -v` shows the mascot again.
+
+### Fixed
+
+- Google usage counts reasoning once: the adapter folds thoughts into the
+  candidate output, so token totals and cost no longer double by default for
+  responses that report both.
+- The prompt cache prefix is no longer rewritten on every request.
+- Compaction keeps room for the sections that matter, segments local overflow
+  with background observations, and keeps resumed worker previews bounded.
+- Dependency installs surface consent failures and npm root causes, and keep
+  installer failures with bounded logs.
+- Sub-agent history is discoverable after completion, a user stop is
+  distinguished from a failure, child navigation and duplicate names stay
+  apart, and local sub-agent calls render as one line.
+- Windows startup probes keep onboarding connected instead of blocking the
+  workspace.
+- A directory walk no longer feeds non-UTF-8 files into the prompt.
+- Knowledge-graph visibility is restored, and sharing a published knowledge
+  index reports ready.
+
 ## v0.9.1 — 2026-11-09
 
 ### Added
