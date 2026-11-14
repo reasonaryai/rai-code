@@ -65,6 +65,8 @@ Unattended runs never download missing runtimes without explicit approval. Insta
 `--without-runtimes` with `install.sh`, or `-WithRuntimes` / `-WithoutRuntimes`
 with `install.ps1`. Use `rai ripgrep path` to inspect the search executable.
 
+Update later with `rai update` (`rai update --check` only reports whether a newer release exists). RAI can stay open while it updates; restart it to use the new version.
+
 ### Manual download
 
 Pre-built binaries for all platforms: [GitHub Releases](https://github.com/reasonaryai/rai-code/releases)
@@ -759,17 +761,14 @@ rai update-providers /path/to/providers.json  # models.dev-compatible JSON
 
 ---
 
-## Metrics
+## Privacy
 
-RAI records pseudonymous usage metrics (device hash, no prompts/responses collected). Opt out:
+RAI does not send usage metrics or analytics to any third party. Network traffic
+goes only to your configured model providers, RAI's own services (sign-in, model
+catalog, update checks) and any MCP servers, LSPs and web tools you enable.
 
-```bash
-export RAI_DISABLE_METRICS=1
-```
-
-Or configure: `{ "options": { "disable_metrics": true } }`
-
-RAI also respects `DO_NOT_TRACK=1`.
+`options.disable_metrics`, `RAI_DISABLE_METRICS` and `DO_NOT_TRACK` are still
+accepted for backward compatibility but have no effect.
 
 ---
 

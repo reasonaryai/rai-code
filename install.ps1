@@ -145,6 +145,19 @@ $RAI_RELEASE_BASE_URL = if ($env:RAI_RELEASE_BASE_URL) {
     "https://github.com/$REPO/releases/download"
 }
 
+# TEST-ONLY (used by .github/workflows/install-smoke.yml): trust a throwaway
+# key instead of the release key so a locally built fake release can be
+# installed. It is honoured only when RAI_INSTALL_TEST=1 AND the release is
+# served from this machine (http://127.0.0.1 or http://localhost); against any
+# real release URL the embedded key above is the only trust anchor.
+if ($env:RAI_INSTALL_TEST -eq '1' -and $env:RAI_TEST_PUBKEY_FILE) {
+    if ($RAI_RELEASE_BASE_URL -match '^http://(127\.0\.0\.1|localhost):') {
+        $RAI_RELEASE_PUBKEY = (Get-Content -Raw -LiteralPath $env:RAI_TEST_PUBKEY_FILE).Trim()
+    } else {
+        throw "RAI_TEST_PUBKEY_FILE is only allowed with a local release URL"
+    }
+}
+
 if ($Help) {
     Write-Host "Usage: .\install.ps1 [-Version vX.Y.Z] [-WithRuntimes|-WithoutRuntimes]"
     exit 0
@@ -171,11 +184,20 @@ $TARGET = "windows-amd64"
 if (-not $Version) {
     $Step = "resolving the latest release"
     Write-Host "-> Resolving latest release..."
+    # Same source as `rai update`: the GitHub latest release first (no CDN
+    # cache), the VERSION file only when the API is rate limited or unreachable.
     try {
-        $Version = (Invoke-RaiWebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION").Content.Trim()
-    } catch {
-        Write-StepFailure $_
-        throw
+        $rel = Invoke-RestMethod -Uri "https://api.github.com/repos/$REPO/releases/latest" -ErrorAction Stop `
+            -Headers @{ 'Accept' = 'application/vnd.github+json'; 'Cache-Control' = 'no-cache'; 'User-Agent' = 'rai-installer' }
+        if ($rel.tag_name -match '^v\d+\.\d+\.\d+') { $Version = $rel.tag_name }
+    } catch { }
+    if (-not $Version) {
+        try {
+            $Version = (Invoke-RaiWebRequest "https://raw.githubusercontent.com/$REPO/main/VERSION?t=$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())").Content.Trim()
+        } catch {
+            Write-StepFailure $_
+            throw
+        }
     }
 }
 Write-Host "-> Installing rai $Version ($TARGET)..."
@@ -228,6 +250,22 @@ try {
 }
 
 try {
+    # Already installed? The receipt written by a previous install/update
+    # records the version and SHA-256 of the file it installed; both must match.
+    $existing = "$INSTALL_DIR\rai.exe"
+    $receiptFile = "$existing.updated-version"
+    if ((Test-Path -LiteralPath $existing) -and (Test-Path -LiteralPath $receiptFile)) {
+        try {
+            $receipt = Get-Content -Raw -LiteralPath $receiptFile | ConvertFrom-Json
+            $curHash = (Get-FileHash -LiteralPath $existing -Algorithm SHA256).Hash.ToLower()
+            if ($receipt.Version -eq $Version.TrimStart('v') -and $receipt.Hash -eq $curHash) {
+                Write-Host "-> rai $Version is already installed in $INSTALL_DIR (nothing to do)."
+                Write-Host "   If RAI is open, restart it to use $Version."
+                return
+            }
+        } catch { }
+    }
+
     # Download
     $Step = "downloading $DOWNLOAD_URL"
     Write-Host "-> Downloading..."
@@ -305,7 +343,58 @@ try {
     # Install
     $Step = "installing rai.exe into $INSTALL_DIR"
     New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
-    Copy-Item -Path "$TMPDIR\extracted\rai.exe" -Destination "$INSTALL_DIR\rai.exe" -Force
+    $target = "$INSTALL_DIR\rai.exe"
+    $staged = "$INSTALL_DIR\rai.exe.new"
+    # RAI may be open, in any number of windows. Windows will not let a running
+    # exe be overwritten or deleted, but it does let it be renamed. So: move the
+    # running file aside under a name nothing can occupy, rename the new file
+    # into place, and leave the open windows running their renamed image. Nobody
+    # has to close anything; the next start is the new version.
+    Get-ChildItem -Path "$INSTALL_DIR\rai.exe.old*" -ErrorAction SilentlyContinue |
+        Remove-Item -Force -ErrorAction SilentlyContinue   # leftovers still in use stay until their window closes
+    $aside = "$INSTALL_DIR\rai.exe.old-$PID-$([DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds())"
+    $swapped = $false
+    $lastError = $null
+    for ($attempt = 1; $attempt -le 6 -and -not $swapped; $attempt++) {
+        $movedAside = $false
+        try {
+            # Antivirus can hold the freshly written file for a moment: retry.
+            if (-not (Test-Path -LiteralPath $staged)) {
+                Copy-Item -LiteralPath "$TMPDIR\extracted\rai.exe" -Destination $staged -Force -ErrorAction Stop
+            }
+            if (Test-Path -LiteralPath $target) {
+                Move-Item -LiteralPath $target -Destination $aside -Force -ErrorAction Stop
+                $movedAside = $true
+            }
+            Move-Item -LiteralPath $staged -Destination $target -Force -ErrorAction Stop
+            $swapped = $true
+        } catch {
+            $lastError = $_.Exception.Message
+            # Never leave the install without a binary.
+            if ($movedAside -and -not (Test-Path -LiteralPath $target)) {
+                Move-Item -LiteralPath $aside -Destination $target -Force -ErrorAction SilentlyContinue
+            }
+            if ($attempt -lt 6) { Start-Sleep -Milliseconds (250 * $attempt) }
+        }
+    }
+    if (-not $swapped) {
+        Remove-Item -LiteralPath $staged -Force -ErrorAction SilentlyContinue
+        # Renaming the file aside is impossible here (for example the folder is
+        # not writable), so closing RAI cannot be avoided: say exactly why.
+        $running = @(Get-Process -Name rai -ErrorAction SilentlyContinue)
+        $hint = if ($running.Count -gt 0) { " $($running.Count) rai process(es) are running (PIDs: $(($running | ForEach-Object { $_.Id }) -join ', ')); close them and run this installer again." } else { " Check the permissions of $INSTALL_DIR, or choose another folder with `$env:RAI_INSTALL_DIR." }
+        throw "could not replace $target : $lastError.$hint"
+    }
+    Remove-Item -LiteralPath $aside -Force -ErrorAction SilentlyContinue   # fails harmlessly while a window still runs it
+    # The receipt tells open RAI windows (and the auto-updater) that this release
+    # is already on disk, so they only suggest a restart and never re-download.
+    try {
+        $hash = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLower()
+        Set-Content -LiteralPath "$target.updated-version" -Value ('{"Version":"' + $Version.TrimStart('v') + '","Hash":"' + $hash + '"}') -NoNewline
+    } catch { }
+    if (Get-Process -Name rai -ErrorAction SilentlyContinue) {
+        Write-Host "  RAI is open in another window: it keeps running the old version. Restart it to use $Version."
+    }
 
     $Step = "reviewing optional dependencies"
     if ($WithRuntimes) { & "$INSTALL_DIR\rai.exe" dependencies setup --yes }
@@ -326,6 +415,7 @@ try {
     Write-Host ""
     Write-Host "  Run 'rai' to get started!"
     Write-Host "  (Restart your terminal if 'rai' is not found in PATH)"
+    Write-Host "  Update later with: rai update"
 } catch {
     Write-StepFailure $_
     # throw, not exit: `irm | iex` runs in the caller's session, and exit would

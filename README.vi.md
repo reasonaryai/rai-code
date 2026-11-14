@@ -556,17 +556,15 @@ rai update-providers /path/to/providers.json
 
 File JSON tùy chỉnh phải theo định dạng tương thích models.dev.
 
-## Metrics
+## Quyền riêng tư
 
-RAI thu thập metrics sử dụng với mã băm thiết bị; không thu thập prompt hoặc nội dung trả lời.
-Tắt bằng biến môi trường:
+RAI không gửi metrics hay dữ liệu phân tích tới bên thứ ba. Lưu lượng mạng chỉ
+đi tới nhà cung cấp mô hình bạn cấu hình, dịch vụ của RAI (đăng nhập, danh mục
+mô hình, kiểm tra cập nhật) và các MCP server, LSP, công cụ web bạn bật. Prompt
+và nội dung trả lời chỉ gửi tới nhà cung cấp mô hình bạn chọn.
 
-```bash
-export RAI_DISABLE_METRICS=1
-```
-
-Hoặc dùng `{ "options": { "disable_metrics": true } }` trong cấu hình.
-RAI cũng tôn trọng `DO_NOT_TRACK=1`.
+Tuỳ chọn `options.disable_metrics` cùng biến `RAI_DISABLE_METRICS` và
+`DO_NOT_TRACK` vẫn được chấp nhận để tương thích ngược nhưng không còn tác dụng.
 
 ## Tự hoàn thành lệnh shell
 

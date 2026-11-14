@@ -28,6 +28,18 @@ MTFWbBYntasa/cNVH9O4WY5FO2cvs+kWR2JEbiTUBnckDzIz0AOhgXR+VhQS0NzF
 heVGOkn1eh9oHph1j3l0zSECAwEAAQ==
 -----END PUBLIC KEY-----'
 
+# TEST-ONLY (used by .github/workflows/install-smoke.yml): trust a throwaway
+# key instead of the release key so a locally built fake release can be
+# installed. It is honoured only when RAI_INSTALL_TEST=1 AND the release is
+# served from this machine (http://127.0.0.1 or http://localhost); against any
+# real release URL the embedded key above is the only trust anchor.
+if [ "${RAI_INSTALL_TEST:-}" = "1" ] && [ -n "${RAI_TEST_PUBKEY_FILE:-}" ]; then
+    case "$RAI_RELEASE_BASE_URL" in
+        http://127.0.0.1:*|http://localhost:*) RAI_RELEASE_PUBKEY=$(cat "$RAI_TEST_PUBKEY_FILE") ;;
+        *) echo "ERROR: RAI_TEST_PUBKEY_FILE is only allowed with a local release URL" >&2; exit 1 ;;
+    esac
+fi
+
 RUNTIMES="ask"
 VERSION=""
 while [ $# -gt 0 ]; do
@@ -74,10 +86,32 @@ esac
 
 # Resolve latest version if not specified
 if [ -z "$VERSION" ]; then
-    VERSION=$(curl -fsSL "$VERSION_FILE" | tr -d '[:space:]')
+    # Same source as `rai update`: the GitHub latest release first (no CDN
+    # cache), the VERSION file only when the API is rate limited or unreachable.
+    VERSION=$(curl -fsSL -H 'Accept: application/vnd.github+json' -H 'Cache-Control: no-cache' \
+        "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null \
+        | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\(v[0-9][0-9.]*\)".*/\1/p' | head -n 1) || VERSION=""
+    if [ -z "$VERSION" ]; then
+        VERSION=$(curl -fsSL -H 'Cache-Control: no-cache' "$VERSION_FILE?t=$(date +%s)" | tr -d '[:space:]')
+    fi
     if [ -z "$VERSION" ]; then
         echo "ERROR: Could not determine latest version" >&2
         exit 1
+    fi
+fi
+# Already installed? The receipt written by a previous install/update records
+# the version and the SHA-256 of the file it installed; both must still match.
+RECEIPT="$INSTALL_DIR/rai.updated-version"
+if [ -f "$INSTALL_DIR/rai" ] && [ -f "$RECEIPT" ]; then
+    if command -v shasum >/dev/null 2>&1; then
+        CUR_HASH=$(shasum -a 256 "$INSTALL_DIR/rai" | awk '{print $1}')
+    else
+        CUR_HASH=$(sha256sum "$INSTALL_DIR/rai" | awk '{print $1}')
+    fi
+    if grep -q "\"Version\":\"${VERSION#v}\"" "$RECEIPT" && grep -q "\"Hash\":\"$CUR_HASH\"" "$RECEIPT"; then
+        echo "-> rai $VERSION is already installed in $INSTALL_DIR (nothing to do)."
+        echo "   If RAI is open, restart it to use $VERSION."
+        exit 0
     fi
 fi
 echo "-> Installing rai $VERSION ($TARGET)..."
@@ -144,8 +178,26 @@ tar -xzf "$PKG"
 
 # Install
 mkdir -p "$INSTALL_DIR"
-cp rai "$INSTALL_DIR/rai"
-chmod +x "$INSTALL_DIR/rai"
+# Never write over a running binary: Linux answers "Text file busy" and macOS
+# invalidates the code signature of the live image, so the process is killed
+# and the install looks like it half-worked. Stage beside the target and
+# rename, which swaps the file atomically.
+STAGED="$INSTALL_DIR/.rai.install.$$"
+cp rai "$STAGED"
+chmod +x "$STAGED"
+if [ "$(uname -s)" = "Darwin" ]; then
+    xattr -d com.apple.quarantine "$STAGED" 2>/dev/null || true
+fi
+mv -f "$STAGED" "$INSTALL_DIR/rai"
+
+# Receipt: open RAI sessions (and the auto-updater) learn this release is
+# already on disk and only suggest a restart instead of downloading it again.
+if command -v shasum >/dev/null 2>&1; then
+    BIN_HASH=$(shasum -a 256 "$INSTALL_DIR/rai" | awk '{print $1}')
+else
+    BIN_HASH=$(sha256sum "$INSTALL_DIR/rai" | awk '{print $1}')
+fi
+printf '{"Version":"%s","Hash":"%s"}' "${VERSION#v}" "$BIN_HASH" > "$INSTALL_DIR/rai.updated-version" 2>/dev/null || true
 
 # The installed binary owns prompts, versions and persistent choices.
 case "$RUNTIMES" in
@@ -164,3 +216,4 @@ case ":${PATH:-}:" in
         printf '  To enable the rai command, add this to your shell profile:\n    export PATH=%q:"$PATH"\n' "$INSTALL_DIR"
         ;;
 esac
+echo "  Update later with: rai update"

@@ -10,6 +10,112 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.3 — 2026-11-14
+
+### Added
+
+- **Send immediately or queue.** While the agent is working, Enter sends your
+  message into the running turn once the current tool step finishes, and Tab
+  queues it as the next turn. A muted line shows the message is waiting; if the
+  turn is interrupted or the runtime is lost the text returns to the composer.
+- **The sub-agent session is obvious.** Opening a sub-agent shows a label bar
+  with its name and mode, an accent border, a "Sub-agent: name" badge in the
+  sidebar, and clearer status icons in the agents list.
+- **Duplicate background servers are flagged.** Starting a service lists the ones
+  already running and warns when the same server is started again (for example on
+  another port), with rules to reuse, fix, and stop services before finishing.
+- **The Responses model is shown as Agentic Auker**; the chat model keeps the
+  name Auker.
+- **Background work is visible and wakes the agent.** The agents panel shows
+  elapsed time and token use per agent, the chat shows "Waiting for N background
+  agents to finish", and the main agent starts a new turn on its own when
+  background jobs or sub-agents finish (a user stop never triggers a wake).
+  Background bash accepts `wake_on_output` to wake on a matching line.
+- **Job details are live.** Opening a background job shows its status, a running
+  clock, its command and an output that follows the tail; `x` stops it from
+  there.
+- **Attachment chips open and sit in the text.** Ctrl+click opens the file, and
+  pasted files and images appear as inline tokens that delete together with
+  their chip.
+- **Screenshots are reused** when the page, viewport and workspace are
+  unchanged; `force: true` takes a fresh one.
+- **`rai update [--check]`, `rai resume`, `rai models list`, `rai projects list`,
+  `rai config`, `rai login status`** and `rai doctor` sub-views follow common CLI
+  conventions. Older spellings keep working and print a hint.
+- **Code mode is shown as Agentic** (`Ag`; Ask is `As`). `--mode agentic` works
+  on `rai run` and `rai review`.
+- **Sub-agents can run in parallel beyond five** (`options.max_parallel_agents`,
+  default 16).
+
+### Improved
+
+- **A sub-agent transcript shows its own activity.** Opening a sub-agent that is
+  still running shows the Working row with the child's own elapsed time (not the
+  main turn's), Esc asks for confirmation and cancels only the child being viewed
+  while its siblings keep running, and the row disappears when the child finishes.
+- **Model preferences follow the agreed phase table.** Planning, architecture,
+  design and visual review, implementation, testing, debugging, review, verify,
+  research and docs each prefer an ordered set of models (design and visual review
+  prefer DeepSeek V4.1 Flash only; implementation and testing DeepSeek V4.0/V4.1
+  Flash then GLM 5.3 Flash). MiniMax M3 is no longer preferred by any phase, and
+  writing tests is its own phase, separate from running verification. A preferred
+  model the Auker catalog does not offer is skipped, never substituted.
+- **Lean or full is a judgment, not a list of cases.** The agent decides by what
+  could go wrong and for whom: small, self-contained, low-consequence work is done
+  directly and checked once, while wide or sensitive work (auth, secrets, data,
+  migrations, money, deployment, unclear requests) keeps the staged workflow with
+  independent review and verification. Asking for a "design" or a "build" no longer
+  makes a small task large.
+- **Fewer needless review and verify rounds.** A turn whose sub-agents changed
+  nothing in the workspace, or only touched files RAI or the toolchain maintain
+  (`.gitignore` rules for rai.json, `go.sum`, caches), is no longer gated; a
+  verify or review worker gets one pass and at most one resume per revision.
+- **Run time and tokens on every agents row**, formatted like the turn timer, and
+  the main row keeps its time and tokens while a sub-agent is open.
+- **Updates work while RAI is open.** On Windows the running executable is
+  renamed aside instead of overwritten; elsewhere the new file replaces it
+  atomically. One source decides the latest version for manual, automatic and
+  scripted installs, and development builds never update themselves.
+- **Completion checks cover 19 languages**, and small low-risk changes finish
+  with a lighter check instead of a full independent review.
+- **Auker routing follows the work.** The phase (research, design, implement,
+  review, verify) is detected from the task, also in existing repositories.
+- **Replies keep your language**, and the first progress message states whether
+  the task takes the lean or the full path.
+- **Provider outages are recoverable.** The replacement-model question appears
+  for the main agent and for sub-agents, expires after
+  `options.replace_model_timeout_minutes`, and the chosen model is used for the
+  next prompt. Questions are queued per session and flagged in `/session`.
+- **Separate runtimes per project and data directory**, so several terminals no
+  longer interfere with each other.
+- **Errors are specific.** Server messages such as "data directory already in
+  use" are shown instead of a bare status code, and `rai config set` refuses
+  values that would make the config unreadable.
+
+### Fixed
+
+- On Windows, edits were refused with "file has not been read yet" right after a
+  successful view when the model wrote the path with forward slashes
+  (`C:/Users/...`), ending in a loop. Reads are now matched across path spellings.
+- A sub-agent resume that also carried name, mode or model fields was refused;
+  those fields are ignored and the worker continues.
+- A plain comment containing a colon (for example `# Helper: returns 1`) no longer
+  triggers the strict completion gate and an independent verification.
+- When a turn was continued on a replacement model (or retried), the original
+  prompt was sent a second time, which could repeat finished tool calls.
+- The "runtime stopped" error now stays visible until the runtime reconnects.
+- A workflow that could not be accepted no longer loops for many minutes; it ends
+  with a blocked report, and repositories without tests converge.
+- A crash when many agents started at once.
+- A lost runtime is reported instead of leaving `rai run` or the UI waiting
+  forever.
+- `rai projects` no longer lists the runtime's own state directory.
+
+### Privacy
+
+- The third-party usage telemetry was removed. Error reports to RAI stay off
+  unless `options.enable_error_reports` is set.
+
 ## v0.9.2 — 2026-11-12
 
 ### Added
