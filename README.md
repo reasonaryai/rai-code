@@ -400,7 +400,7 @@ For **interactive mode** (`rai` without `run`), RAI offers fine-grained permissi
 
 | Mode | Behavior |
 |------|----------|
-| `AcceptEdits` | Auto-approve edit/write tools. Ask for everything else |
+| `Auto` (`accept_edits`) | Run ordinary work (edits, builds, tests, local git) and ask only for dangerous actions |
 | `AcceptAll` | Auto-approve everything. No prompts |
 | `Prompt` | Ask for every action |
 

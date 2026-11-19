@@ -10,6 +10,91 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.4 — 2026-11-19
+
+### Added
+
+- **Auto permission mode.** The default **Accept edits** mode is now **Auto**: ordinary
+  work (edits, builds, tests, linters, local git, installs inside the project, localhost
+  servers) runs without a question and RAI asks only when it detects a dangerous call:
+  deleting or writing outside the workspace, `.git` hooks, shell rc files and RAI config,
+  credential reads, force pushes and other shared-history changes, publishing, privilege
+  and disk commands, persistence, killing foreign processes, download-and-run, cloud
+  metadata and private-network URLs, and commands whose effect cannot be seen. The
+  categories, the `permissions.auto` settings (a project config can only tighten them)
+  and the denial tracking (Auto falls back to asking after 3 denials in a row or 20 in
+  total) are in [docs/AUTO_MODE.md](docs/AUTO_MODE.md). `accept_edits` and `auto-edit`
+  keep working as Auto; `--permission-mode=auto` is accepted. A denied or deferred call
+  now tells the model what was detected and not to retry or work around it. Sub-agents
+  follow their session's mode and a dangerous call from one is deferred for review. The
+  **Auto-approve all** label is now **Full Access**. Edits outside the workspace
+  and `fetch` of cloud-metadata or private addresses (including names that resolve to them) no longer run silently. Auto's only automatic scratch folder outside the project is `<temp>/rai-<uid>` (the `TMPDIR` of bash commands); and a project script, Makefile target, npm/yarn/pnpm script or just recipe a command runs is read and checked line by line. The optional
+  model-based classifier is not part of this release.
+
+- **Folder trust.** A folder's own config files (`rai.json`, `.rai.json`,
+  `.rai/rai.json`, `.rai/mcp.json`, including ones in parent folders up to the git
+  root) can declare commands RAI would start: MCP stdio servers, plugin packages,
+  hooks and custom LSP commands. They no longer run without your consent. The first
+  time you open a folder that declares any, RAI lists every command verbatim with the
+  file it comes from and asks: Trust all, Choose each, Don't trust (continue without
+  them) or Quit. The decision is stored in your user data directory, per folder and
+  per command: editing or adding a command asks again, about that command only.
+  Remote MCP servers (HTTP/SSE) and your own global config are unaffected. For
+  scripts, `rai run --trust` or `RAI_TRUST_PROJECT=1` opts in for one run; without it
+  the skipped commands are printed to stderr. `rai trust` / `rai untrust` change the
+  decision and `rai doctor` shows it. Full access mode never grants trust.
+
+### Improved
+
+- **Auto mode is harder to talk around.** Closing the gaps found by comparing it with Claude
+  Code's auto mode: inline interpreter code (`python3 -c`, heredocs, `node -e`, `perl -e`,
+  `ruby -e`, `awk`, `sed ...e`, `trap`) is read for commands, file writes, network and
+  credentials; credential reads are caught through relative paths, `cd`, globs, symlinks,
+  `/proc/*/environ`, shell histories and environment dumps; a write whose target path is
+  built from an unset variable asks; `.vscode/`, `.idea/`, `.husky/`, `.github/workflows/`,
+  `.envrc`, `.bashrc` and `.gitconfig` are protected inside the workspace too;
+  `PATH`/`LD_PRELOAD`/`GIT_SSH_COMMAND`/`NODE_OPTIONS=--require` style variables,
+  download-then-run, `npx`/`uvx`/`pipx run`/`pip install` of packages the project does not
+  declare, secrets sent with `curl`, git in a repository outside the workspace and a bare
+  `git push` from `main` ask. Allow rules and hook approvals no longer override protected
+  paths, credentials or deletes outside the workspace, blanket allow rules (`bash`,
+  `bash:python3`, `bash:sh`, `bash:npx`...) are ignored in Auto like Claude Code does, a
+  headless `rai run` now denies dangerous calls (with the reason) instead of approving them
+  and aborts after the denial limits, and an MCP server's own read-only claim is no longer
+  trusted. See [docs/AUTO_MODE.md](docs/AUTO_MODE.md).
+
+- **Auto asks about programs it does not know.** A command used to be ordinary unless it
+  matched a danger rule; now it is ordinary only when its programs are on a documented list
+  of development tooling (Go, Rust, Node, Python, JVM, C/C++, git, docker, coreutils,
+  formatters, linters and so on), workspace executables or functions the command defines. Any
+  other program, or one started by a path outside the workspace and system directories, asks
+  once (**Allow for session** remembers it). `permissions.auto.known_commands` adds your own
+  tools to the list. Formatters, editors and compressors have their file arguments checked as
+  writes. See [docs/AUTO_MODE.md](docs/AUTO_MODE.md#known-programs).
+- **The code index no longer takes over your home folder, and indexes only your code.** Starting RAI in your home folder (or any folder whose data directory is the global `~/.rai`) used to index everything you own, store it next to your settings and keep a full second copy: gigabytes. The index now stays off there, and in any folder that is not a project (no `.git`, no build file such as `go.mod` or `package.json`), with one short note (`options.knowledge.index: lazy` opts in and indexes on demand), and databases of deleted workspaces are removed after 7 days. The index also used to walk the project's own `.rai` data folder (experiments, worktree copies) and count it as code, which could make it many times the size of the project; it now only reads your project's source files and never `.rai`, `.git`, the data directory, or anything your `.gitignore`/`.raiignore` hide. There is no default size cap: a large codebase is indexed completely (`options.knowledge.max_db_mb` is an opt-in limit, `options.knowledge.max_files` raises the 50000-file scan limit), and a scan that hits the file limit is shown as incomplete in `rai doctor` and the index status. `rai doctor` shows the index sizes and warns for a non-project workspace.
+- A project config can no longer set provider endpoints or credentials commands, or
+  pre-approve tools, until the folder is trusted.
+
+**Heads-up for existing users:** the first time you open a folder that already has
+such commands, RAI asks once.
+
+- **Code mode is named Code again** (`C`; Ask is `A`). Only the name changes:
+  Code mode still delegates to parallel sub-agents as before, and `--mode agentic`
+  remains an accepted alias of `code`.
+
+- Design workers establish a shared foundation before splitting related screens, and can download real photos with explicit web optimization. Ordinary downloads retain their bytes; optimized results report the saved checksum and preserve originals without overwriting existing files.
+- The design phase's self-review is one quick, strictly bounded pass instead of a screenshot test cycle. When the coordinator has no browser, the quick look goes into the design worker's own assignment.
+- Review and verification reuse attributable evidence for the unchanged source revision. Optional suggestions do not restart a completed check, and low-risk mechanical changes request the missing local readback before demanding independent workers.
+- A new question or correction can steer the active turn after the current tool step. Old to-dos and acceptance records no longer automatically pull a completed answer back into earlier work.
+- Large session lists and terminal scrolling remain responsive with bounded activity probes and more precise scrollbar dragging.
+
+### Fixed
+
+- Recoverable tool-call failures start collapsed in chat; click or Space reveals their full details. Errors that stop the turn remain visible.
+- Cut-off tool arguments are never executed. Interrupted or incomplete turns retain an explicit status in chat and command output.
+- Image budget recovery keeps stored originals and can resend newly read images after a provider rejects an oversized request.
+- Tool argument and edit errors give more precise diagnostics. Background dispatch is included in the Agentic Auker tool contract.
+
 ## v0.9.3 — 2026-11-14
 
 ### Added
@@ -212,10 +297,11 @@ original mirror release did not include detailed change notes. -->
 
 ### Changed
 
-- **The verification gate defaults to `strict`.** A turn that changes files now
-  needs current independent review and runtime verification, or explicit skip
-  reasons, before it completes. Set `verify_gate` to `soft` for the previous
-  single nudge, or `off` to disable the check.
+- **The verification gate is `off` by default.** RAI no longer nudges a turn
+  that changes files to run review and verification: the agent instructions still
+  ask for them in code phases, but nothing at runtime pushes the agent. This also
+  stops the Agentic Auker completion feedback from continuing a finished turn.
+  Set `verify_gate` to `soft` (one nudge) or `strict` to restore the runtime gate.
 
 ### Fixed
 

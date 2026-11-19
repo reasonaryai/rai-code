@@ -282,7 +282,7 @@ Headless tự động phê duyệt mọi quyền. Trong giao diện tương tác
 
 | Chế độ | Hành vi |
 |---|---|
-| `AcceptEdits` | Tự phê duyệt sửa/ghi file, hỏi với các hành động khác |
+| `Auto` (`accept_edits`) | Tự chạy công việc thông thường (sửa file, build, test, git cục bộ), chỉ hỏi khi phát hiện hành động nguy hiểm |
 | `AcceptAll` | Tự phê duyệt mọi hành động |
 | `Prompt` | Hỏi trước mỗi hành động |
 
