@@ -10,6 +10,31 @@ the documentation website reads it. Dates are GitHub publication dates in UTC. T
 its initial notes were verified against the v0.7.0 source tag, because the
 original mirror release did not include detailed change notes. -->
 
+## v0.9.5 — 2026-11-20
+
+### Improved
+
+- **Design phase stops at the prototype.** In the UI/UX design phase the agent writes the prototype and stops: it does not review, test, host or add extra documents on its own. Its closing message ends by asking whether you want a deep design review, which runs only if you say yes.
+- **Question forms fit any terminal.** Options sit on tight rows with the selected one filled across the full width, only the selected option shows its description when space is short, Yes/No buttons start neutral, sections keep a blank row between them when there is room, and the key hints shorten to stay on one row in narrow terminals.
+- **Dedicated tools first.** The instructions and the `bash`, `download` and `job_output` tool descriptions now steer the agent to `download` and `fetch` instead of scripts, and to stop waiting on a background job that shows no new output after about three waits.
+- **Clearer instructions.** Duplicated rules were removed and several contradictory ones were reconciled: when verification is mandatory, when a script may be used, and how a follow-up review ends.
+- **Unfocused mode badge.** When the input has no focus, the mode badge in the composer is drawn as an outline (brackets in the mode colour) instead of a filled block, like the unfocused cursor.
+- **Lighter composer.** The rotating busy-state placeholder text and its blink timer are removed; the composer is empty while the agent works (the `Working ... esc to interrupt` status line is unchanged). The start and done placeholders remain, cut to one line that fits the input width.
+
+### Changed
+
+- **Browser tools belong to the checking modes.** Code mode no longer offers the browser tools; Review, Verify and Debug keep them, including screenshots. Video recording (`browser_recording`) is switched off for now.
+- **Loop detection covers every tool.** A turn ends when the same tool call returns the same result more than five times within ten steps. No tool is exempt any more, so a background job that stays silent while it is polled repeatedly also ends the turn; a job whose output changes does not.
+
+### Fixed
+
+- **Images in long sessions.** When earlier screenshots no longer fit the request, they are marked as earlier captures that were already received instead of telling the agent to capture again, and one rejected request no longer shrinks the image allowance for the rest of the session.
+- **Repeated steps.** The agent is now told to skip and report a step that fails or makes no progress three times instead of retrying it.
+- **Question dialog is readable.** One question marker instead of two, a bold title, a long description capped to two lines with `d` to read it all, numbered options with bold titles and dim descriptions, and the selected option highlighted. The duplicate "Waiting for your answer" box in the transcript is gone; the status line stays. A question you cancel shows "Canceled." instead of a red "Tool call failed".
+- **Interrupting a running command.** An interrupted `bash` or question tool now reads "Canceled." instead of a red failure, and a timeout error that follows your own interrupt is treated as the interrupt instead of showing `FAIL context deadline exceeded`.
+- **Agents panel width.** Rows of the Agents panel are measured with ambiguous-width symbols counted as two cells, so they no longer overflow narrow or resized panes in terminals that draw those symbols wide.
+- **Windows.** Output written to stderr while the full-screen interface is open is redirected to the log, so it can no longer scroll the screen under the renderer.
+
 ## v0.9.4 — 2026-11-19
 
 ### Added
